@@ -1,0 +1,70 @@
+import { NextResponse } from "next/server";
+import connectMongo from "../../../database/connectMongo";
+import Joi from "joi";
+import User from "./../../../models/user";
+import jwt from "jsonwebtoken";
+
+const schema = Joi.object({
+  email: Joi.string().email().required(),
+  password: Joi.string().required(),
+});
+
+export const dynamic = "force-dynamic";
+
+export async function POST(req) {
+  await connectMongo();
+  try {
+    const { email, password } = await req.json();
+    const { error } = schema.validate({ email, password });
+    if (error) {
+      return NextResponse.json({
+        success: false,
+        message: error.details[0].message,
+      });
+    }
+    const checkUser = await User.findOne({ email });
+    if (!checkUser) {
+      return NextResponse.json({
+        success: false,
+        message: "No account found with this email",
+      });
+    } else {
+      const checkPassword = password === checkUser.password ? true : false;
+      if (!checkPassword) {
+        return NextResponse.json({
+          success: false,
+          message: "Incorrect Password",
+        });
+      } else {
+        const token = jwt.sign(
+          {
+            id: checkUser?._id,
+            email: checkUser?.email,
+            role: checkUser?.role,
+          },
+          "default_secret_key",
+          { expiresIn: "1d" }
+        );
+        const finalData = {
+          token,
+          user: {
+            email: checkUser.email,
+            name: checkUser.name,
+            _id: checkUser._id,
+            role: checkUser.role,
+          },
+        };
+        return NextResponse.json({
+          success: true,
+          message: "Login successfully",
+          data: finalData,
+        });
+      }
+    }
+  } catch (err) {
+    return NextResponse.json({
+      success: false,
+      message: "Something went wrong...!",
+    });
+  }
+}
